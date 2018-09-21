@@ -1,26 +1,36 @@
 #!/bin/bash
 
 # get load averages
-IFS=" " read LOAD1 LOAD5 LOAD15 <<<$(cat /proc/loadavg | awk '{ print $1,$2,$3 }')
+IFS=" " read LOAD1 LOAD5 LOAD15 <<<$(sysctl -n vm.loadavg | awk '{ print $2,$3,$4 }')
 # get free memory
-IFS=" " read USED FREE TOTAL <<<$(free -htm | grep "Mem" | awk {'print $3,$4,$2'})
+# IFS=" " read USED FREE TOTAL <<<$(free -htm | grep "Mem" | awk {'print $3,$4,$2'})
 # get processes
 PROCESS=`ps -eo user=|sort|uniq -c | awk '{ print $2 " " $1 }'`
 PROCESS_ALL=`echo "$PROCESS"| awk {'print $2'} | awk '{ SUM += $1} END { print SUM }'`
 PROCESS_ROOT=`echo "$PROCESS"| grep root | awk {'print $2'}`
 PROCESS_USER=`echo "$PROCESS"| grep -v root | awk {'print $2'} | awk '{ SUM += $1} END { print SUM }'`
+MACOS_PRODNAME=`sw_vers -productName`
+MACOS_VERSION=`sw_vers -productVersion`
 
-W="\e[0;39m"
-G="\e[1;32m"
+FREE_BLOCKS=$(vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
+INACTIVE_BLOCKS=$(vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')
+SPECULATIVE_BLOCKS=$(vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')
+
+FREE=$((($FREE_BLOCKS+SPECULATIVE_BLOCKS)*4096/1048576))
+INACTIVE=$(($INACTIVE_BLOCKS*4096/1048576))
+TOTAL=$((($FREE+$INACTIVE)))
+
+W="$(tput setaf 7)"
+G="$(tput setaf 2)"
 
 echo -e "
 ${W}system info:
-$W  Distro......: $W`cat /etc/*release | grep "PRETTY_NAME" | cut -d "=" -f 2- | sed 's/"//g'`
+$W  Distro......: $W$MACOS_PRODNAME $MACOS_VERSION
 $W  Kernel......: $W`uname -sr`
 
-$W  Uptime......: $W`uptime -p`
+$W  Uptime......: $W`uptime | awk '{print $3}' | sed 's/\,//'`
 $W  Load........: $G$LOAD1$W (1m), $G$LOAD5$W (5m), $G$LOAD15$W (15m)
 $W  Processes...:$W $G$PROCESS_ROOT$W (root), $G$PROCESS_USER$W (user) | $G$PROCESS_ALL$W (total)
 
-$W  CPU.........: $W`cat /proc/cpuinfo | grep "model name" | cut -d ' ' -f3- | awk {'print $0'} | head -1`
-$W  Memory......: $G$USED$W used, $G$FREE$W free, $G$TOTAL$W in total$W"
+$W  CPU.........: $W`sysctl -n machdep.cpu.brand_string `
+$W  Memory......: $G$INACTIVE mb$W inactive, $G$FREE mb$W free, $G$TOTAL mb$W in total$W"
